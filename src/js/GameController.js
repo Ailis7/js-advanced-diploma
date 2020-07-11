@@ -136,6 +136,7 @@ export default class GameController {
     this.gamePlay.addNewGameListener(() => {
       localStorage.clear();
       this.charArr = [];
+      this.currentLevel = 1;
       this.gamePlay.cellClickListeners = [];
       this.gamePlay.cellEnterListeners = [];
       this.gamePlay.cellLeaveListeners = [];
