@@ -25,7 +25,6 @@ export default class GameController {
   }
 
   init() {
-
     const light = [Magician, Swordsman, Bowman]; // классы света и тьмы
     const dark = [Vampire, Undead, Daemon];
     this.gamePlay.drawUi(themes.prairie);
