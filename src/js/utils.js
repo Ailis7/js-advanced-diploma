@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 export function calcTileType(index, boardSize) {
   if (index === 0) return 'top-left';
   if (index === 7) return 'top-right';
