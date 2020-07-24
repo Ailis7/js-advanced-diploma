@@ -10,10 +10,7 @@ export function* characterGenerator(allowedTypes, maxLevel) {
   const randomClass = new allowedTypes[randomInteger(0, allowedTypes.length - 1)]();
   const randomLevel = randomInteger(1, maxLevel);
   randomClass.level = randomLevel;
-  let a = 0;
   for (let i = 1; randomClass.level > i; i += 1) {
-    a += 1;
-    console.log(a);
     randomClass.levelUp();
     randomClass.level -= 1;
   }

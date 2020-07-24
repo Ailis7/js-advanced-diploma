@@ -21,10 +21,13 @@ export default class GameController {
     this.matrix = null;
     this.state = null;
     this.currentLevel = 1;
-    this.whoisTurn = 'bot';
+    this.whoisTurn = 'man';
   }
 
   init() {
+    console.log(this.stateService.load());
+    this.gamePlayClearListner();
+
     const light = [Magician, Swordsman, Bowman]; // классы света и тьмы
     const dark = [Vampire, Undead, Daemon];
     this.gamePlay.drawUi(themes.prairie);
@@ -79,7 +82,7 @@ export default class GameController {
       return this.gamePlay.drawUi(theme);
     };
 
-    if (this.currentLevel > 1) {
+    if (this.currentLevel > 1 && this.stateService.load().status === undefined) {
       drawTheme();
       const newCharCount = (this.currentLevel === 2) ? 1 : 2;
       const newLightArr = this.charArr.map((e) => {
@@ -101,10 +104,16 @@ export default class GameController {
       // пихаем свет в финальный массив для отрисовки
       getPos(darkCells(), generateTeam(dark, 1, 2)).forEach((e) => this.charArr.push(e)); // и тьму
 
-      if (this.stateService.load() !== null) {
+      const checkPoints = this.stateService.load();
+      if (checkPoints === null || checkPoints.points === undefined) {
+        const newPoints = { points: 0 };
+        this.stateService.save(newPoints);
+      }
+
+      if (this.stateService.load().status !== undefined) {
+        this.charArr = [];
         const load = this.stateService.load();
         this.currentLevel = load.currentLevel;
-        this.charArr = [];
 
         load.arrOfChar.forEach((e) => { // вот такой геоморой.. т.к. объекты прилетают из Storage
           light.concat(dark).forEach((Class) => {
@@ -119,28 +128,70 @@ export default class GameController {
           });
         });
         this.whoisTurn = load.whoisTurn;
+        this.save();
       } // после множества тестов пришел к выводу что бесполезно хранить чей сейчас ход
       // т.к. бот всё равно успеет пойти, либо атака\ход обоих не засчитаются
       drawTheme();
 
-      this.onCellEnter = this.onCellEnter.bind(this); // проброс контекста this
-      this.onCellLeave = this.onCellLeave.bind(this);
-      this.onCellClick = this.onCellClick.bind(this); // во все слушатели
-      this.gamePlay.addCellClickListener(this.onCellClick);
-      this.gamePlay.addCellEnterListener(this.onCellEnter);
-      this.gamePlay.addCellLeaveListener(this.onCellLeave);
     }
+    this.onCellEnter = this.onCellEnter.bind(this); // проброс контекста this
+    this.onCellClick = this.onCellClick.bind(this); // во все слушатели
+    this.onCellLeave = this.onCellLeave.bind(this);
+    this.gamePlay.addCellClickListener(this.onCellClick);
+    this.gamePlay.addCellEnterListener(this.onCellEnter);
+    this.gamePlay.addCellLeaveListener(this.onCellLeave);
     this.gamePlay.redrawPositions(this.charArr);
 
     this.gamePlay.addNewGameListener(() => {
-      localStorage.clear();
+      this.save('new game');
+      this.clean();
       this.charArr = [];
-      this.currentLevel = 1;
-      this.gamePlay.cellClickListeners = [];
-      this.gamePlay.cellEnterListeners = [];
-      this.gamePlay.cellLeaveListeners = [];
       this.init();
     });
+
+    this.gamePlay.addSaveGameListener(() => {
+      this.save();
+      alert('Игра сохранена!');
+    });
+
+    this.gamePlay.addLoadGameListener(() => {
+      this.save('load');
+      this.init();
+      alert('Игра загружена!');
+    });
+  }
+
+  save(type = 'save') {
+    const saveObj = this.stateService.load();
+    if (type === 'save') {
+
+      saveObj.arrOfChar = this.charArr;
+      saveObj.currentLevel = this.currentLevel;
+      saveObj.whoisTurn = this.whoisTurn;
+      delete saveObj.status;
+    } else if (type === 'load') {
+      if (saveObj.arrOfChar === undefined) {
+        alert('Сохранения не найдены');
+        throw new Error();
+      }
+      saveObj.status = 'load';
+    } else {
+      delete saveObj.arrOfChar;
+      delete saveObj.currentLevel;
+      delete saveObj.whoisTurn;
+    }
+    this.stateService.save(saveObj);
+  }
+
+  gamePlayClearListner(type) {
+    this.gamePlay.cellClickListeners = [];
+    this.gamePlay.cellEnterListeners = [];
+    this.gamePlay.cellLeaveListeners = [];
+    if (type !== 'block') {
+      this.gamePlay.newGameListeners = [];
+      this.gamePlay.saveGameListeners = [];
+      this.gamePlay.loadGameListeners = [];
+    }
   }
 
   matrixSearch(el) { // перевод индексов клетки в массив вида [1, 5]
@@ -178,18 +229,12 @@ export default class GameController {
     return allowedCells;
   }
 
-  SaveAndClean() { // сохранение и очистка после хода
-    const saveObj = {};
-    saveObj.arrOfChar = this.charArr;
-    saveObj.currentLevel = this.currentLevel;
-    this.whoisTurn = (this.whoisTurn === 'man') ? 'bot' : 'man';
-    saveObj.whoisTurn = this.whoisTurn;
-    this.stateService.save(saveObj);
-
+  clean() { // очистка после хода
     const deselectArr = [...allowed(0, this.gamePlay.cells.length - 1)];
     deselectArr.forEach((e) => this.gamePlay.deselectCell(e));
     this.state = null;
     this.selectedChar = null;
+    this.whoisTurn = (this.whoisTurn === 'bot') ? 'man' : 'bot';
   }
 
   onCellClick(index) {
@@ -209,7 +254,7 @@ export default class GameController {
         } else if (this.state !== null && this.state.status === 'attack') { // атака
           const go = async () => {
             const attack = await wait.call(this);
-            const test = await this.SaveAndClean();
+            const test = await this.clean();
             const bot = await this.AI();
             // attack();
             // test();
@@ -227,12 +272,11 @@ export default class GameController {
           this.gamePlay.deselectCell(this.selectedChar.position);
           e.position = index;
           this.gamePlay.redrawPositions(this.charArr);
-          this.SaveAndClean();
+          this.clean();
           this.AI();
         }
       });
     }
-    // console.log(this.gamePlay.showDamage(0, 1000));
   }
 
   onCellEnter(index) {
@@ -323,7 +367,7 @@ export default class GameController {
       this.selectedChar = think[0].attacker;
       this.state = { status: 'attack', target: think[0].defender };
       wait.call(this);
-      this.SaveAndClean();
+      this.clean();
     } else {
       const closesArrUnic = new Set();
       lightArr.forEach((e) => { // сначала ищем и ходим к ближайшим клеткам игрока
@@ -345,7 +389,7 @@ export default class GameController {
         const whoWalk = walk[randomInteger(0, walk.length - 1)];
         this.charArr[this.charArr.indexOf(whoWalk.walker)].position = whoWalk.where;
         this.gamePlay.redrawPositions(this.charArr);
-        this.SaveAndClean();
+        this.clean();
       } else { // в противном случае ходит к ближайшему врагу
         const randomEnemy = lightArr[randomInteger(0, lightArr.length - 1)];
         const randomWalker = darkArr[randomInteger(0, darkArr.length - 1)];
@@ -366,13 +410,8 @@ export default class GameController {
         this.charArr[this.charArr.indexOf(randomWalker)].position = this
           .matrix[nearest[0]][nearest[1]];
         this.gamePlay.redrawPositions(this.charArr);
-        this.SaveAndClean();
+        this.clean();
       }
     }
-    // console.log(this.selectedChar);
-    // console.log(think);
-    // console.log(this.matrix);
-    // console.log(this.allowedArr(lightArr[0].position, 1));
-    // console.log(this.allowedArr(1, 1))
   }
 }
