@@ -25,7 +25,6 @@ export default class GameController {
   }
 
   init() {
-    console.log(this.stateService.load());
     this.gamePlayClearListner();
 
     const light = [Magician, Swordsman, Bowman]; // классы света и тьмы
@@ -36,10 +35,12 @@ export default class GameController {
 
     const { cells } = this.gamePlay;
 
+    const cellIndexs = (cell) => cells.indexOf(cell) % 8; // возвращает индекс ячейки % 8
+
     const lightCells = () => { // возвращает массив для с допустимыми ячейками для света
       const cellsArr = [];
       cells.forEach((elem) => {
-        if (cells.indexOf(elem) % 8 === 0 || cells.indexOf(elem) % 8 === 1) { // 0 & 1
+        if (cellIndexs(elem) === 0 || cellIndexs(elem) === 1) { // 0 & 1
           cellsArr.push(cells.indexOf(elem));
         }
       });
@@ -49,7 +50,7 @@ export default class GameController {
     const darkCells = () => { // возвращает массив для с допустимыми ячейками для тьмы
       const cellsArr = [];
       cells.forEach((elem) => {
-        if (cells.indexOf(elem) % 8 === 7 || cells.indexOf(elem) % 8 === 7) { // 7 & 6
+        if (cellIndexs(elem) === 7 || cellIndexs(elem) === 7) { // 7 & 6
           cellsArr.push(cells.indexOf(elem));
         }
       });
@@ -75,12 +76,15 @@ export default class GameController {
     };
 
     const drawTheme = () => {
-      let theme = themes.prairie;
-      if (this.currentLevel === 2) theme = themes.desert;
-      if (this.currentLevel === 3) theme = themes.arctic;
-      if (this.currentLevel === 4) theme = themes.mountain;
+      const theme = {
+        1: themes.prairie,
+        2: themes.desert,
+        3: themes.arctic,
+        4: themes.mountain,
+      }[this.currentLevel];
       return this.gamePlay.drawUi(theme);
     };
+
 
     if (this.currentLevel > 1 && this.stateService.load().status === undefined) {
       drawTheme();
@@ -128,43 +132,40 @@ export default class GameController {
           });
         });
         this.whoisTurn = load.whoisTurn;
-        this.save();
+        this.saveAndLoad();
       } // после множества тестов пришел к выводу что бесполезно хранить чей сейчас ход
       // т.к. бот всё равно успеет пойти, либо атака\ход обоих не засчитаются
       drawTheme();
-
     }
-    this.onCellEnter = this.onCellEnter.bind(this); // проброс контекста this
-    this.onCellClick = this.onCellClick.bind(this); // во все слушатели
-    this.onCellLeave = this.onCellLeave.bind(this);
-    this.gamePlay.addCellClickListener(this.onCellClick);
-    this.gamePlay.addCellEnterListener(this.onCellEnter);
-    this.gamePlay.addCellLeaveListener(this.onCellLeave);
+
+    this.gamePlay.addCellClickListener(this.onCellClick.bind(this));
+    this.gamePlay.addCellEnterListener(this.onCellEnter.bind(this));
+    this.gamePlay.addCellLeaveListener(this.onCellLeave.bind(this));
     this.gamePlay.redrawPositions(this.charArr);
 
     this.gamePlay.addNewGameListener(() => {
-      this.save('new game');
+      this.saveAndLoad('new game');
       this.clean();
       this.charArr = [];
+      this.currentLevel = 1;
       this.init();
     });
 
     this.gamePlay.addSaveGameListener(() => {
-      this.save();
+      this.saveAndLoad();
       alert('Игра сохранена!');
     });
 
     this.gamePlay.addLoadGameListener(() => {
-      this.save('load');
+      this.saveAndLoad('load');
       this.init();
       alert('Игра загружена!');
     });
   }
 
-  save(type = 'save') {
+  saveAndLoad(type = 'save') {
     const saveObj = this.stateService.load();
     if (type === 'save') {
-
       saveObj.arrOfChar = this.charArr;
       saveObj.currentLevel = this.currentLevel;
       saveObj.whoisTurn = this.whoisTurn;
@@ -203,23 +204,21 @@ export default class GameController {
   }
 
   allowedArr(index, range, arr = 'walk') { // допустимые клетки для перехода\атаки
-    const mainIndex = this.matrixSearch(index);
-    const allowedIndex = [...allowed(mainIndex[1] - range, mainIndex[1] + range)]; // генерируем
-    const allowedCells = [];
-    allowedIndex.forEach((e) => {
-      for (let i = 0 - range; i < range + 1; i += 1) {
-        if (mainIndex[0] + i > -1 && mainIndex[0] + i < this.matrix[0].length) {
-          if (this.matrix[mainIndex[0] + i][e] !== undefined // исключаем пустые
-            && this.matrix[mainIndex[0] + i][e] !== index) { // и само положение перса
-            const disallowedArr = () => { // недопустимые при ходьбе ячейки
-              const finallArr = [];
-              this.charArr.forEach((elem) => finallArr.push(elem.position));
-              return finallArr;
-            };
-            const arrNotAllowed = (arr === 'walk') ? disallowedArr() : []; // недопустимые ячейки если по умолчанию walk
+    const mainIndex = this.matrixSearch(index); // превращаем например 0 в [0, 0], 9 в [1, 1]
+    const horizontalCellsArr = [...allowed(mainIndex[1] - range, mainIndex[1] + range)];
 
-            if (arrNotAllowed.indexOf(this.matrix[mainIndex[0] + i][e]) === -1) {
-              allowedCells.push(this.matrix[mainIndex[0] + i][e]);
+    const allowedCells = [];
+    horizontalCellsArr.forEach((hIndex) => { // hCell - horizontal Index
+      for (let i = -range; i < range + 1; i += 1) { // от и до
+        const vIndex = mainIndex[0] + i; // vCell - vertical Index
+        if (vIndex > -1 && vIndex < this.matrix[0].length) {
+          if (this.matrix[vIndex][hIndex] !== undefined // исключаем пустые
+            && this.matrix[vIndex][hIndex] !== index) { // и само положение перса
+            const arrNotAllowed = (arr === 'walk') ? this.charArr.map((elem) => elem.position) : []; // недопустимые ячейки если по умолчанию walk
+
+            if (arrNotAllowed.indexOf(this.matrix[vIndex][hIndex]) === -1) {
+              allowedCells.push(this.matrix[vIndex][hIndex]);
+              // возвращаем в двузначном представлении
             }
           }
         }
@@ -239,9 +238,9 @@ export default class GameController {
 
   onCellClick(index) {
     if (this.gamePlay.boardEl.style.cursor === 'not-allowed') GamePlay.showError('Недопустимое действие');
-    this.charArr.forEach((e) => {
-      if (e.position === index) {
-        if (e.character.type === 'swordsman' || e.character.type === 'magician' || e.character.type === 'bowman') {
+    this.charArr.forEach((char) => {
+      if (char.position === index) {
+        if (char.character.type === 'swordsman' || char.character.type === 'magician' || char.character.type === 'bowman') {
           if (this.selectedChar !== null
              && this.selectedChar.position === index) { // ставим\снимаем выделение
             this.gamePlay.deselectCell(this.selectedChar.position);
@@ -249,18 +248,15 @@ export default class GameController {
           } else {
             if (this.selectedChar !== null) this.gamePlay.deselectCell(this.selectedChar.position);
             this.gamePlay.selectCell(index);
-            this.selectedChar = e;
+            this.selectedChar = char;
           }
         } else if (this.state !== null && this.state.status === 'attack') { // атака
-          const go = async () => {
+          const go = (async () => {
             const attack = await wait.call(this);
             const test = await this.clean();
             const bot = await this.AI();
-            // attack();
-            // test();
             return null;
-          };
-          go();
+          })(); // iife
         } else {
           GamePlay.showError('Это перс компьютера');
         }
