@@ -11,6 +11,7 @@ import Vampire from './Chars/Vampire';
 import randomInteger, { matrix, wait, allowed } from './functions'; // часто используемые функции
 import GamePlay from './GamePlay';
 import { generateTeam } from './generators';
+import GameState from './GameState';
 
 export default class GameController {
   constructor(gamePlay, stateService) {
@@ -181,7 +182,7 @@ export default class GameController {
       delete saveObj.currentLevel;
       delete saveObj.whoisTurn;
     }
-    this.stateService.save(saveObj);
+    this.stateService.save(GameState.from(saveObj));
   }
 
   gamePlayClearListner(type) {
